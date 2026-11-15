@@ -1,0 +1,217 @@
+import { apiClient, ApiResponse, unwrapResponse } from './client';
+import { Task, TaskStatus, GlobalFilterParams } from '../../types';
+import { TaskFormData } from '../../schema/task.schema';
+import { ReassignFormData } from '../../schema/reassign.schema';
+
+interface BackendTask {
+  id: number;
+  projectId: number;
+  projectName?: string;
+  title: string;
+  description?: string;
+  priority?: string;
+  status?: string;
+  assigneeId?: number;
+  assigneeName?: string;
+  deadline?: string;
+  followers?: Array<{ id: number }>;
+  overdue?: boolean;
+  overdueDays?: number;
+  dependencies?: Array<{ id: number }>;
+  taskType?: string;
+  type?: string;
+  startDate?: string;
+  start_date?: string;
+  departmentId?: number;
+  departmentName?: string;
+  progressPercent?: number;
+  progress_percent?: number;
+}
+
+const mapTask = (task: BackendTask): Task => {
+  const priority = (task.priority || 'MEDIUM') as Task['priority'];
+  const status = (task.status || 'TODO') as TaskStatus;
+  const rawTaskType = task.taskType || task.type;
+  const taskType: Task['taskType'] =
+    rawTaskType && ['PLANNING', 'DEVELOPMENT', 'DESIGN', 'MARKETING', 'TESTING', 'OTHER'].includes(rawTaskType)
+      ? rawTaskType as Task['taskType']
+      : 'OTHER';
+  return {
+    id: task.id,
+    project_id: task.projectId,
+    projectId: task.projectId,
+    project_name: task.projectName,
+    projectName: task.projectName,
+    title: task.title,
+    description: task.description || '',
+    priority,
+    status,
+    task_type: taskType,
+    taskType,
+    is_important: priority === 'HIGH' || priority === 'URGENT',
+    isImportant: priority === 'HIGH' || priority === 'URGENT',
+    is_urgent: priority === 'URGENT',
+    isUrgent: priority === 'URGENT',
+    progress_percent: task.progressPercent ?? task.progress_percent ?? (status === 'DONE' ? 100 : 0),
+    progressPercent: task.progressPercent ?? task.progress_percent ?? (status === 'DONE' ? 100 : 0),
+    assignee_id: task.assigneeId ?? 0,
+    assigneeId: task.assigneeId ?? 0,
+    assignee_name: task.assigneeName,
+    assigneeName: task.assigneeName,
+    follower_ids: task.followers?.map((user) => user.id) || [],
+    followerIds: task.followers?.map((user) => String(user.id)) || [],
+    dependencyIds: task.dependencies?.map((dependency) => String(dependency.id)) || [],
+    start_date: task.startDate || task.start_date,
+    startDate: task.startDate || task.start_date,
+    deadline: task.deadline || '',
+    dueDate: task.deadline || '',
+    overdueDays: task.overdueDays ?? (task.overdue ? 1 : 0),
+    overdue_days: task.overdueDays ?? (task.overdue ? 1 : 0),
+    department_id: task.departmentId,
+    departmentId: task.departmentId,
+    departmentName: task.departmentName,
+  };
+};
+
+const unwrapTask = (response: ApiResponse<BackendTask>): Task =>
+  mapTask(unwrapResponse(response));
+
+type TaskUpdateData = Partial<TaskFormData> & { progressPercent?: number };
+
+const toBackendTask = (data: TaskUpdateData) => ({
+  projectId: data.projectId ? Number(data.projectId) : undefined,
+  title: data.title,
+  description: data.description || undefined,
+  priority: data.priority,
+  assigneeId: data.assigneeId ? Number(data.assigneeId) : undefined,
+  startDate: data.startDate ? `${data.startDate}T00:00:00` : undefined,
+  deadline: data.dueDate ? `${data.dueDate}T23:59:59` : undefined,
+  followerUserIds: data.followerIds?.map(Number),
+  dependencyTaskIds: data.dependencyIds?.map(Number),
+  progressPercent: data.progressPercent,
+});
+
+export const taskApi = {
+  getTasks: async (params?: Partial<GlobalFilterParams>): Promise<Task[]> => {
+    const requestedProjectId = params?.projectId && params.projectId !== 'ALL'
+      ? Number(params.projectId)
+      : undefined;
+    let projectIds = requestedProjectId ? [requestedProjectId] : [];
+
+    if (!requestedProjectId) {
+      const projectsResponse = await apiClient.get<ApiResponse<{ content?: Array<{ id: number }> }>>('/projects', {
+        params: { page: 0, size: 1000, sort: 'id,desc' },
+      });
+      const projectsData = unwrapResponse(projectsResponse.data);
+      projectIds = projectsData.content?.map((project) => project.id) || [];
+    }
+
+    const responses = await Promise.all(projectIds.map((projectId) =>
+      apiClient.get<ApiResponse<{ content?: BackendTask[] } | BackendTask[]>>('/tasks', {
+        params: {
+          projectId,
+          status: params?.status && params.status !== 'ALL' ? params.status : undefined,
+          listOnly: true,
+          page: 0,
+          size: 1000,
+          sort: 'id,desc',
+        },
+      })
+    ));
+    const tasks = responses.flatMap((response) => {
+      const data = unwrapResponse(response.data);
+      return Array.isArray(data) ? data : data.content || [];
+    });
+    const term = params?.searchTerm?.toLowerCase();
+
+    return tasks
+      .map(mapTask)
+      .filter((task) => !term || `${task.title} ${task.assigneeName || ''} ${task.projectName || ''}`.toLowerCase().includes(term))
+      .filter((task) => !params?.assigneeId || params.assigneeId === 'ALL' || String(task.assigneeId) === params.assigneeId)
+      .filter((task) => !params?.priority || params.priority === 'ALL' || task.priority === params.priority)
+      .filter((task) => !params?.status || params.status === 'ALL' || task.status === params.status)
+      .filter((task) => !params?.projectId || params.projectId === 'ALL' || String(task.projectId) === String(params.projectId))
+      .filter((task) => !params?.departmentId || params.departmentId === 'ALL' || String(task.departmentId ?? task.department_id) === String(params.departmentId))
+      .filter((task) => !params?.taskType || params.taskType === 'ALL' || task.taskType === params.taskType)
+      .filter((task) => !params?.fromDate || String(task.deadline || task.dueDate || '').slice(0, 10) >= params.fromDate)
+      .filter((task) => !params?.toDate || String(task.deadline || task.dueDate || '').slice(0, 10) <= params.toDate)
+      .filter((task) => !params?.onlyOverdue || task.overdueDays! > 0);
+  },
+
+  createTask: async (data: TaskFormData): Promise<Task> => {
+    const response = await apiClient.post<ApiResponse<BackendTask>>('/tasks', toBackendTask(data));
+    return unwrapTask(response.data);
+  },
+
+  updateTask: async (id: number | string, data: TaskUpdateData): Promise<Task> => {
+    const response = await apiClient.put<ApiResponse<BackendTask>>(`/tasks/${id}`, toBackendTask(data));
+    return unwrapTask(response.data);
+  },
+
+  reassignTask: async (data: ReassignFormData): Promise<Task> => {
+    const response = await apiClient.patch<ApiResponse<BackendTask>>(`/tasks/${data.taskId}/assign`, {
+      assigneeId: Number(data.newAssigneeId),
+      note: data.reason || undefined,
+    });
+    return unwrapTask(response.data);
+  },
+
+  updateTaskStatus: async (taskId: number | string, status: TaskStatus): Promise<Task> => {
+    const response = await apiClient.patch<ApiResponse<BackendTask>>(`/tasks/${taskId}/status`, { status });
+    return unwrapTask(response.data);
+  },
+
+  updateTaskProgress: async (
+    taskId: number | string,
+    progressPercent: number,
+    status: TaskStatus,
+    task: Task,
+  ): Promise<Task> => {
+    const response = await apiClient.put<ApiResponse<BackendTask>>(`/tasks/${taskId}`, {
+      projectId: Number(task.projectId ?? task.project_id),
+      title: task.title,
+      description: task.description || undefined,
+      priority: task.priority,
+      status,
+      assigneeId: Number(task.assigneeId ?? task.assignee_id) || undefined,
+      startDate: task.startDate || task.start_date
+        ? `${String(task.startDate || task.start_date).slice(0, 10)}T00:00:00`
+        : undefined,
+      deadline: (task.deadline || task.dueDate)
+        ? `${String(task.deadline || task.dueDate).slice(0, 10)}T23:59:59`
+        : undefined,
+      followerUserIds: (task.followerIds ?? task.follower_ids ?? []).map(Number),
+      dependencyTaskIds: (task.dependencyIds ?? []).map(Number),
+      progressPercent,
+    });
+    if (!response.data) {
+      return { ...task, progressPercent, progress_percent: progressPercent, status };
+    }
+    const payload = response.data as ApiResponse<BackendTask> | BackendTask;
+    if ('success' in payload) {
+      return unwrapTask(response.data as ApiResponse<BackendTask>);
+    }
+    return mapTask(payload as BackendTask);
+  },
+
+  deleteTask: async (id: number | string): Promise<{ success: boolean }> => {
+    await apiClient.delete(`/tasks/${id}`);
+    return { success: true };
+  },
+
+  rescheduleTask: async (task: Task, startDate: string, deadline: string, changeReason: string): Promise<Task> => {
+    const response = await apiClient.put<ApiResponse<BackendTask>>(`/tasks/${task.id}`, {
+      projectId: Number(task.projectId ?? task.project_id),
+      title: task.title,
+      description: task.description || undefined,
+      priority: task.priority,
+      assigneeId: Number(task.assigneeId ?? task.assignee_id) || undefined,
+      startDate: `${startDate}T00:00:00`,
+      deadline: `${deadline}T23:59:59`,
+      followerUserIds: (task.followerIds ?? task.follower_ids ?? []).map(Number),
+      dependencyTaskIds: (task.dependencyIds ?? []).map(Number),
+      changeReason,
+    });
+    return unwrapTask(response.data);
+  },
+};

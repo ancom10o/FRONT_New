@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ws-brand-50: #eff6ff;
+  --ws-brand-600: #2563eb;
+  --ws-brand-700: #1d4ed8;
+  --ws-canvas: #f4f7fb;
+  --ws-surface: #ffffff;
+  --ws-border: #e2e8f0;
+  --ws-text: #1e293b;
+  --ws-muted: #64748b;
+  --ws-priority-low: #64748b;
+  --ws-priority-medium: #3b82f6;
+  --ws-priority-high: #f59e0b;
+  --ws-priority-urgent: #ef4444;
+}
+
+@layer base {
+  body {
+    @apply bg-[#f4f7fb] text-slate-800 antialiased;
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  button, input, select, textarea {
+    font: inherit;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2;
+  }
+}
+
+/* Custom scrollbar matching modern SaaS */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Keep the Gantt today marker readable on its one-pixel guide line. */
+.bg-orange-500\/80 > span {
+  display: inline-block;
+  width: max-content;
+  white-space: nowrap;
+}
