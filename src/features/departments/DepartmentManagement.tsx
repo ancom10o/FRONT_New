@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BriefcaseBusiness, Building2, Edit2, Mail, Plus, Search, Trash2, UserRound, X } from 'lucide-react';
+import { ArrowLeft, Building2, Edit2, Mail, Plus, Search, Trash2, UserRound, X } from 'lucide-react';
 import { departmentApi } from '../../services/api/department.api';
 import { userApi } from '../../services/api/user.api';
 import { Department, User } from '../../types';
 import { useAuthStore } from '../../store/auth.store';
 
-type DepartmentForm = { name: string; description: string; managerId: string };
-const emptyForm: DepartmentForm = { name: '', description: '', managerId: '' };
+type DepartmentForm = { name: string; description: string };
+const emptyForm: DepartmentForm = { name: '', description: '' };
 
 export const DepartmentManagement: React.FC = () => {
   const { isAdmin } = useAuthStore();
@@ -20,8 +20,6 @@ export const DepartmentManagement: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
-  const [selectedManagerId, setSelectedManagerId] = useState('');
-  const [isSavingManager, setIsSavingManager] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -63,7 +61,6 @@ export const DepartmentManagement: React.FC = () => {
     setForm({
       name: department.name,
       description: department.description || '',
-      managerId: String(department.manager_id || ''),
     });
     setIsFormOpen(true);
   };
@@ -76,7 +73,6 @@ export const DepartmentManagement: React.FC = () => {
       const payload = {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
-        managerId: form.managerId ? Number(form.managerId) : undefined,
       };
       if (editing) await departmentApi.updateDepartment(editing.id, payload);
       else await departmentApi.createDepartment(payload);
@@ -101,41 +97,33 @@ export const DepartmentManagement: React.FC = () => {
 
   const openDepartment = (department: Department) => {
     setSelectedDepartment(department);
-    setSelectedManagerId(String(department.manager_id || ''));
     setError('');
-  };
-
-  const saveDepartmentManager = async () => {
-    if (!selectedDepartment) return;
-    setIsSavingManager(true);
-    setError('');
-    try {
-      const updated = await departmentApi.updateDepartment(selectedDepartment.id, {
-        name: selectedDepartment.name,
-        description: selectedDepartment.description,
-        managerId: selectedManagerId ? Number(selectedManagerId) : undefined,
-      });
-      setSelectedDepartment(updated);
-      await loadData();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Không thể cập nhật trưởng phòng');
-    } finally {
-      setIsSavingManager(false);
-    }
   };
 
   const memberCount = (departmentId: number | string) =>
     users.filter((user) => user.status === 'ACTIVE' && String(user.departmentId ?? user.department_id) === String(departmentId)).length;
+
+  // Trưởng phòng được xác định tự động từ tài khoản MANAGER đang hoạt động
+  // thuộc chính phòng ban đó, thay vì phụ thuộc vào một managerId được gán tay.
+  const departmentManagers = (departmentId: number | string) => users.filter((user) =>
+    user.status === 'ACTIVE'
+    && String(user.departmentId ?? user.department_id) === String(departmentId)
+    && String(user.system_role || user.role).toUpperCase() === 'MANAGER'
+  );
+
+  const managerNames = (departmentId: number | string) => {
+    const managers = departmentManagers(departmentId);
+    return managers.length
+      ? managers.map((user) => user.full_name || user.name).filter(Boolean).join(', ')
+      : '—';
+  };
 
   const selectedUsers = selectedDepartment
     ? users.filter((user) => user.status === 'ACTIVE' && String(user.departmentId ?? user.department_id) === String(selectedDepartment.id))
     : [];
 
   if (selectedDepartment) {
-    const managerOptions = users.filter((user) => user.status === 'ACTIVE'
-      && (String(user.id) === String(selectedDepartment.manager_id)
-        || (user.system_role || user.role) === 'MANAGER'));
-    const selectedManager = users.find((user) => String(user.id) === selectedManagerId);
+    const selectedManagers = departmentManagers(selectedDepartment.id);
 
     return (
       <div className="space-y-4">
@@ -150,7 +138,7 @@ export const DepartmentManagement: React.FC = () => {
             </div>
             <div className="flex gap-2">
               <div className="rounded-2xl bg-blue-50 px-4 py-3"><div className="text-[10px] text-blue-500">Nhân sự đang hoạt động</div><div className="mt-1 text-xl font-bold text-blue-700">{selectedUsers.length}</div></div>
-              <div className="rounded-2xl bg-slate-50 px-4 py-3"><div className="text-[10px] text-slate-400">Trưởng phòng</div><div className="mt-1 text-sm font-bold text-slate-700">{selectedManager?.full_name || selectedManager?.name || selectedDepartment.managerName || 'Chưa phân công'}</div></div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-3"><div className="text-[10px] text-slate-400">Trưởng phòng</div><div className="mt-1 text-sm font-bold text-slate-700">{managerNames(selectedDepartment.id)}</div></div>
             </div>
           </div>
         </div>
@@ -158,26 +146,10 @@ export const DepartmentManagement: React.FC = () => {
         {error && <div role="alert" className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>}
 
         <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><BriefcaseBusiness className="h-5 w-5" /></div>
-            <div><h3 className="text-sm font-bold text-slate-800">Chức vụ chuyên môn trong phòng ban</h3><p className="mt-1 text-xs text-slate-400">Danh mục chức danh cố định và chức danh do quản trị viên tạo.</p></div>
-          </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-amber-200 bg-amber-50/60 p-4">
-            <p className="text-xs text-amber-800">Danh mục chức vụ dùng chung cần API backend; hiện chưa thể thêm, sửa hoặc lưu thay đổi.</p>
-            <button type="button" disabled title="Chờ API quản lý chức vụ" className="rounded-xl bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-500">+ Thêm chức vụ · Chờ API</button>
-          </div>
-        </section>
-
-        <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h3 className="text-sm font-bold text-slate-800">Trưởng phòng & quyền hạn</h3><p className="mt-1 text-xs text-slate-400">Chọn người quản lý từ các tài khoản có vai trò quản lý.</p></div>
-            {isAdmin() && <div className="flex w-full gap-2 sm:w-auto">
-              <select aria-label="Chọn trưởng phòng" value={selectedManagerId} onChange={(event) => setSelectedManagerId(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs sm:w-72">
-                {!selectedManagerId && <option value="" disabled>Chọn trưởng phòng</option>}
-                {managerOptions.map((user) => <option key={user.id} value={user.id}>{user.full_name || user.name} · {user.email}</option>)}
-              </select>
-              <button type="button" onClick={saveDepartmentManager} disabled={isSavingManager || !selectedManagerId || selectedManagerId === String(selectedDepartment.manager_id || '')} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isSavingManager ? 'Đang lưu...' : 'Lưu'}</button>
-            </div>}
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Trưởng phòng</h3>
+            <p className="mt-1 text-xs text-slate-400">Tự động xác định từ tài khoản MANAGER đang hoạt động thuộc phòng ban.</p>
+            <p className="mt-3 text-sm font-semibold text-slate-700">{selectedManagers.length ? managerNames(selectedDepartment.id) : 'Chưa có tài khoản MANAGER trong phòng ban.'}</p>
           </div>
         </section>
 
@@ -188,9 +160,8 @@ export const DepartmentManagement: React.FC = () => {
               <div key={user.id} className="flex flex-wrap items-center gap-3 px-5 py-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700"><UserRound className="h-5 w-5" /></div>
                 <div className="min-w-0 flex-1"><div className="truncate text-sm font-bold text-slate-800">{user.full_name || user.name}</div><div className="mt-1 flex items-center gap-1 truncate text-[11px] text-slate-400"><Mail className="h-3 w-3" />{user.email}</div></div>
-                <div className="grid gap-2 text-right sm:grid-cols-4 sm:gap-6">
+                <div className="grid gap-2 text-right sm:grid-cols-3 sm:gap-6">
                   <div><div className="text-[10px] text-slate-400">Mã nhân sự (ID)</div><div className="mt-1 text-xs font-medium text-slate-700">{user.id}</div></div>
-                  <div><div className="text-[10px] text-slate-400">Chức vụ chuyên môn</div><div className="mt-1 text-xs font-medium text-amber-700">Chờ API</div></div>
                   <div><div className="text-[10px] text-slate-400">Chuyên môn (CV)</div><div className="mt-1 text-xs font-medium text-slate-700">{user.specialization || '—'}</div></div>
                   <div><div className="text-[10px] text-slate-400">Vai trò hệ thống / trạng thái</div><div className="mt-1 text-xs font-medium text-slate-700">{(user.system_role || user.role).replace(/_/g, ' ')} · Tài khoản hoạt động</div><div className="mt-1 text-[10px] text-amber-700">Trạng thái làm việc: Chờ API</div></div>
                 </div>
@@ -227,7 +198,6 @@ export const DepartmentManagement: React.FC = () => {
                 <tr>
                   <th className="px-5 py-3 font-semibold">Tên phòng ban</th>
                   <th className="px-4 py-3 font-semibold">Trưởng phòng</th>
-                  <th className="px-4 py-3 text-center font-semibold">Danh mục chức vụ</th>
                   <th className="px-4 py-3 text-center font-semibold">Số nhân viên</th>
                   <th className="px-4 py-3 font-semibold">Tình trạng nhân sự</th>
                   {isAdmin() && <th className="px-5 py-3 text-right font-semibold">Thao tác</th>}
@@ -235,13 +205,11 @@ export const DepartmentManagement: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredDepartments.map((department) => {
-                  const manager = users.find((user) => String(user.id) === String(department.manager_id));
                   const count = memberCount(department.id);
                   return (
                     <tr key={department.id} className="cursor-pointer transition hover:bg-slate-50/70" onClick={() => openDepartment(department)}>
                       <td className="px-5 py-3.5"><div className="flex items-center gap-2.5"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Building2 className="h-4 w-4" /></span><span><span className="block font-semibold text-slate-800">{department.name}</span><span className="mt-0.5 block max-w-xs truncate text-[10px] text-slate-400">{department.description || 'Chưa có mô tả'}</span></span></div></td>
-                      <td className="px-4 py-3.5 text-slate-600">{manager?.full_name || manager?.name || department.managerName || '—'}</td>
-                      <td className="px-4 py-3.5 text-center text-amber-700">Chờ API</td>
+                      <td className="px-4 py-3.5 text-slate-600">{managerNames(department.id)}</td>
                       <td className="px-4 py-3.5 text-center font-semibold text-slate-700">{count}</td>
                       <td className="px-4 py-3.5"><span className={`rounded-full px-2 py-1 text-[10px] font-medium ${count ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{count ? 'Có nhân sự' : 'Chưa có nhân sự'}</span></td>
                       {isAdmin() && (
@@ -255,7 +223,7 @@ export const DepartmentManagement: React.FC = () => {
                     </tr>
                   );
                 })}
-                {!filteredDepartments.length && <tr><td colSpan={isAdmin() ? 6 : 5} className="px-5 py-14 text-center text-slate-400"><Building2 className="mx-auto mb-2 h-7 w-7" />Không tìm thấy phòng ban.</td></tr>}
+                {!filteredDepartments.length && <tr><td colSpan={isAdmin() ? 5 : 4} className="px-5 py-14 text-center text-slate-400"><Building2 className="mx-auto mb-2 h-7 w-7" />Không tìm thấy phòng ban.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -268,7 +236,6 @@ export const DepartmentManagement: React.FC = () => {
             <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-800">{editing ? 'Cập nhật phòng ban' : 'Thêm phòng ban'}</h3><button type="button" onClick={closeForm} className="p-1.5 rounded-lg hover:bg-slate-100"><X className="w-4 h-4" /></button></div>
             <label className="block text-xs text-slate-500">Tên phòng ban<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-xl text-sm text-slate-800 outline-none focus:border-blue-400" /></label>
             <label className="block text-xs text-slate-500">Mô tả<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-xl text-sm text-slate-800 outline-none focus:border-blue-400 resize-none" /></label>
-            <label className="block text-xs text-slate-500">Trưởng phòng<select value={form.managerId} onChange={(event) => setForm({ ...form, managerId: event.target.value })} className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-xl text-sm text-slate-800"><option value="">Không chọn</option>{users.map((user) => <option key={user.id} value={user.id}>{user.full_name || user.name} - {user.email}</option>)}</select></label>
             <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={closeForm} className="px-4 py-2 bg-slate-100 rounded-xl text-xs font-semibold">Hủy</button><button disabled={isSaving} type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold disabled:opacity-60">{isSaving ? 'Đang lưu...' : 'Lưu phòng ban'}</button></div>
           </form>
         </div>

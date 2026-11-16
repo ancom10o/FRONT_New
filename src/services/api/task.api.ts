@@ -6,18 +6,21 @@ import { ReassignFormData } from '../../schema/reassign.schema';
 interface BackendTask {
   id: number;
   projectId: number;
+  project_id?: number;
   projectName?: string;
   title: string;
   description?: string;
   priority?: string;
   status?: string;
+  statusNote?: string;
   assigneeId?: number;
   assigneeName?: string;
   deadline?: string;
-  followers?: Array<{ id: number }>;
+  followers?: Array<{ id: number; fullName?: string }>;
   overdue?: boolean;
   overdueDays?: number;
-  dependencies?: Array<{ id: number }>;
+  dependencies?: Array<{ id: number; title?: string }>;
+  createdByName?: string;
   taskType?: string;
   type?: string;
   startDate?: string;
@@ -30,7 +33,7 @@ interface BackendTask {
 
 const mapTask = (task: BackendTask): Task => {
   const priority = (task.priority || 'MEDIUM') as Task['priority'];
-  const status = (task.status || 'TODO') as TaskStatus;
+  const status = ((task.status || 'TODO') === 'COMPLETED' ? 'DONE' : task.status || 'TODO') as TaskStatus;
   const rawTaskType = task.taskType || task.type;
   const taskType: Task['taskType'] =
     rawTaskType && ['PLANNING', 'DEVELOPMENT', 'DESIGN', 'MARKETING', 'TESTING', 'OTHER'].includes(rawTaskType)
@@ -38,14 +41,15 @@ const mapTask = (task: BackendTask): Task => {
       : 'OTHER';
   return {
     id: task.id,
-    project_id: task.projectId,
-    projectId: task.projectId,
+    project_id: task.projectId ?? task.project_id,
+    projectId: task.projectId ?? task.project_id,
     project_name: task.projectName,
     projectName: task.projectName,
     title: task.title,
     description: task.description || '',
     priority,
     status,
+    statusNote: task.statusNote,
     task_type: taskType,
     taskType,
     is_important: priority === 'HIGH' || priority === 'URGENT',
@@ -60,7 +64,10 @@ const mapTask = (task: BackendTask): Task => {
     assigneeName: task.assigneeName,
     follower_ids: task.followers?.map((user) => user.id) || [],
     followerIds: task.followers?.map((user) => String(user.id)) || [],
+    followerNames: task.followers?.map((user) => user.fullName || `User ${user.id}`) || [],
     dependencyIds: task.dependencies?.map((dependency) => String(dependency.id)) || [],
+    dependencyTitles: task.dependencies?.map((dependency) => dependency.title || `Task #${dependency.id}`) || [],
+    createdByName: task.createdByName,
     start_date: task.startDate || task.start_date,
     startDate: task.startDate || task.start_date,
     deadline: task.deadline || '',
@@ -156,8 +163,19 @@ export const taskApi = {
     return unwrapTask(response.data);
   },
 
-  updateTaskStatus: async (taskId: number | string, status: TaskStatus): Promise<Task> => {
-    const response = await apiClient.patch<ApiResponse<BackendTask>>(`/tasks/${taskId}/status`, { status });
+  addFollower: async (taskId: number | string, userId: number | string): Promise<Task> => {
+    const response = await apiClient.post<ApiResponse<BackendTask>>(`/tasks/${taskId}/followers/${userId}`);
+    return unwrapTask(response.data);
+  },
+
+  removeFollower: async (taskId: number | string, userId: number | string): Promise<Task> => {
+    const response = await apiClient.delete<ApiResponse<BackendTask>>(`/tasks/${taskId}/followers/${userId}`);
+    return unwrapTask(response.data);
+  },
+
+  updateTaskStatus: async (taskId: number | string, status: TaskStatus, note?: string): Promise<Task> => {
+    const backendStatus = status === 'DONE' ? 'COMPLETED' : status;
+    const response = await apiClient.patch<ApiResponse<BackendTask>>(`/tasks/${taskId}/status`, { status: backendStatus, note: note?.trim() || undefined });
     return unwrapTask(response.data);
   },
 

@@ -3,7 +3,6 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, CircleDot, ClipboardCheck, FolderKanban, ListChecks, ShieldAlert } from 'lucide-react';
 import { projectApi } from '../../services/api/project.api';
 import { taskApi } from '../../services/api/task.api';
-import { mockCoreApi } from '../../mocks/mockApi';
 import { Project, Task } from '../../types';
 import { useAuthStore } from '../../store/auth.store';
 import { useFilterStore } from '../../store/filter.store';
@@ -34,8 +33,7 @@ export const PMOverview: React.FC = () => {
     return () => { active = false; };
   }, []);
 
-  const snapshot = mockCoreApi.snapshot();
-  const pendingCompletion = snapshot.completionRequests.filter(item => item.status === 'PENDING');
+  const pendingCompletion = projects.filter(item => item.status === 'PLANNING' || item.status === 'ACTIVE');
   const reviewTasks = tasks.filter(task => task.status === 'REVIEW');
   const overdueTasks = tasks.filter(task => task.status !== 'DONE' && dateOnly(task.deadline || task.dueDate) < todayKey());
   const activeProjects = projects.filter(project => project.status === 'ACTIVE');

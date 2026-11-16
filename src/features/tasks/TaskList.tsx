@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFilterStore } from '../../store/filter.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useGetTasks, useCreateTask, useUpdateTask, useDeleteTask, useReassignTask } from '../../hooks/useTasks';
@@ -12,9 +12,9 @@ import { TaskFormModal } from './TaskFormModal';
 import { ReassignTaskModal } from './ReassignTaskModal';
 import { TaskFormData } from '../../schema/task.schema';
 import { TaskWorkflowPanel } from './TaskWorkflowPanel';
-import { mockCoreApi } from '../../mocks/mockApi';
 
 export const TaskList: React.FC = () => {
+  const detailScrollRef = useRef<HTMLDivElement>(null);
   const { filters } = useFilterStore();
   const { currentUser } = useAuthStore();
   const taskFilters = useMemo(() => filters, [filters]);
@@ -33,7 +33,13 @@ export const TaskList: React.FC = () => {
   const [priority, setPriority] = useState('ALL');
   const [projectId, setProjectId] = useState('ALL');
   const [onlyOverdue, setOnlyOverdue] = useState(false);
-  const database = mockCoreApi.snapshot();
+  useEffect(() => { if (detailTask && detailScrollRef.current) detailScrollRef.current.scrollTop = 0; }, [detailTask]);
+  useEffect(() => {
+    if (!detailTask) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [detailTask]);
 
   const handleOpenCreate = () => {
     setEditingTask(null);
@@ -70,11 +76,8 @@ export const TaskList: React.FC = () => {
     refetch();
   };
 
-  const isProjectOperator = (task: Task) => {
-    const projectId = Number(task.projectId ?? task.project_id);
-    const project = database.projects.find((item) => item.id === projectId);
-    return project?.leaderId === Number(currentUser.id)
-      || database.projectMemberships.some((item) => Number(item.projectId) === projectId && Number(item.userId) === Number(currentUser.id) && item.projectRole === 'PROJECT_MANAGER' && !item.leftAt);
+  const isProjectOperator = (_task: Task) => {
+    return currentUser.role === 'ADMIN' || currentUser.role === 'MANAGER';
   };
   const getProgress = (task: Task) => task.progressPercent ?? task.progress_percent ?? 0;
   const isEmployee = currentUser.role === 'EMPLOYEE';
@@ -87,14 +90,14 @@ export const TaskList: React.FC = () => {
     .filter((task) => !onlyOverdue || (task.overdueDays || 0) > 0);
 
   return (
-    <div className="bg-white/90 backdrop-blur-md border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4">
+    <div className="bg-white/90 border border-slate-100 rounded-3xl p-5 shadow-sm space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-bold text-slate-800">{isEmployee ? 'Công việc của tôi' : 'Bảng công việc'}</h2>
           <p className="text-xs text-slate-400 mt-0.5">Trạng thái và tiến độ lấy từ checklist/review; mở chi tiết để thao tác đúng workflow.</p>
         </div>
         <div className="flex items-center gap-2">
-          {currentUser.role === 'MANAGER' && (
+          {(currentUser.role === 'ADMIN' || currentUser.role === 'MANAGER') && (
             <button
               onClick={handleOpenCreate}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm transition"
@@ -186,7 +189,7 @@ export const TaskList: React.FC = () => {
                     <td className="py-3 text-center">
                       <div className="flex items-center justify-center gap-1 opacity-80 group-hover:opacity-100">
                         <button type="button" onClick={() => setDetailTask(t)} title="Checklist, follower và review" className="p-1 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg"><Eye className="w-3.5 h-3.5" /></button>
-                        {isProjectOperator(t) && t.status !== 'DONE' && t.status !== 'REVIEW' && (
+                        {isProjectOperator(t) && (currentUser.role === 'ADMIN' || (t.status !== 'DONE' && t.status !== 'REVIEW')) && (
                           <button
                             onClick={() => handleOpenEdit(t)}
                             title="Chỉnh sửa công việc"
@@ -195,7 +198,7 @@ export const TaskList: React.FC = () => {
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        {isProjectOperator(t) && t.status !== 'DONE' && t.status !== 'REVIEW' && (
+                        {isProjectOperator(t) && (currentUser.role === 'ADMIN' || (t.status !== 'DONE' && t.status !== 'REVIEW')) && (
                           <button
                             onClick={() => setReassigningTask(t)}
                             title="Đổi người phụ trách chính"
@@ -204,7 +207,7 @@ export const TaskList: React.FC = () => {
                             <UserCheck className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        {isProjectOperator(t) && t.status !== 'DONE' && (
+                        {isProjectOperator(t) && (currentUser.role === 'ADMIN' || t.status !== 'DONE') && (
                           <button
                             onClick={() => handleDeleteTask(t.id)}
                             title="Xóa công việc (Admin/Manager)"
@@ -237,7 +240,7 @@ export const TaskList: React.FC = () => {
         onReassignSuccess={handleReassign}
       />
 
-      {detailTask && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setDetailTask(null)}><div onClick={(event) => event.stopPropagation()} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"><div className="mb-3 flex justify-end"><button onClick={() => setDetailTask(null)} className="text-xl text-slate-400" aria-label="Đóng">×</button></div><TaskWorkflowPanel taskId={detailTask.id} onChanged={refetch} /></div></div>}
+      {detailTask && <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-3 sm:p-6" onClick={() => setDetailTask(null)}><div ref={detailScrollRef} onClick={(event) => event.stopPropagation()} style={{ minHeight: 'calc(100vh - 1.5rem)' }} className="my-0 w-full max-w-5xl rounded-3xl bg-white p-6 shadow-2xl"><div className="mb-3 flex justify-end"><button onClick={() => setDetailTask(null)} className="text-xl text-slate-400" aria-label="Đóng">×</button></div><TaskWorkflowPanel taskId={detailTask.id} taskData={detailTask} onChanged={refetch} /></div></div>}
     </div>
   );
 };

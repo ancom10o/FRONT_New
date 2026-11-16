@@ -3,7 +3,7 @@ import { mockAxiosAdapter, USE_MOCK_API } from '../../mocks/mockApi';
 
 export const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ||
-  'https://equity-matador-grub.ngrok-free.dev/api';
+  'http://localhost:8080/api';
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,

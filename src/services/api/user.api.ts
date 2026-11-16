@@ -56,11 +56,11 @@ export const userApi = {
     const data = unwrapResponse(response.data);
     return (Array.isArray(data) ? data : data.content || []).map(mapUser);
   },
-  createUser: async (payload: { fullName: string; email: string; password: string; departmentId?: number; systemRole: string }): Promise<User> => {
+  createUser: async (payload: { fullName: string; email: string; password: string; departmentId?: number; systemRole: string; status?: string }): Promise<User> => {
     const response = await apiClient.post<ApiResponse<BackendUser>>('/users', payload);
     return mapUser(unwrapResponse(response.data));
   },
-  updateUser: async (id: number | string, payload: Partial<{ fullName: string; email: string; departmentId: number; systemRole: string }>): Promise<User> => {
+  updateUser: async (id: number | string, payload: Partial<{ fullName: string; email: string; departmentId: number; systemRole: string; status: string }>): Promise<User> => {
     const current = await userApi.getUsers();
     const user = current.find((item) => String(item.id) === String(id));
     if (!user) throw new Error('Không tìm thấy nhân sự để cập nhật phân quyền.');
@@ -69,6 +69,7 @@ export const userApi = {
       email: payload.email ?? user.email,
       departmentId: payload.departmentId ?? (Number(user.departmentId || user.department_id) || undefined),
       systemRole: payload.systemRole,
+      status: payload.status ?? user.status,
     });
     return mapUser(unwrapResponse(response.data));
   },

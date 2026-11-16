@@ -52,3 +52,67 @@
   width: max-content;
   white-space: nowrap;
 }
+@media (min-width: 1280px) {
+  .project-overview {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(360px, 1fr);
+    gap: 1rem;
+  }
+  .project-overview > section:first-child,
+  .project-overview > .grid:last-of-type,
+  .project-overview > section:last-child {
+    grid-column: 1 / -1;
+  }
+  .project-overview > div:nth-child(2) {
+    display: contents;
+  }
+  .project-overview > section:nth-child(3) {
+    grid-column: 2;
+    grid-row: 2;
+    margin: 0;
+  }
+  .project-overview > section:nth-child(3) > div:last-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .project-overview > div:last-of-type > section:first-child > div:first-child > button {
+    font-size: 0;
+  }
+  .project-overview > div:last-of-type > section:first-child > div:first-child > button::after {
+    content: 'Thêm nhân sự →';
+    font-size: 10px;
+  }
+}
+/* Làm nổi bật kết quả tìm kiếm nhân sự trong popup thêm thành viên */
+.max-h-56.overflow-y-auto button b {
+  color: #0f172a;
+  font-weight: 700;
+}
+.max-h-56.overflow-y-auto button > span > span {
+  color: #2563eb;
+  font-weight: 600;
+}
+.bg-blue-50\/50.border-blue-100 {
+  max-height: 8rem;
+  overflow-y: auto;
+}
+.project-overview .max-h-80 {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.project-overview .max-h-80::-webkit-scrollbar {
+  width: 6px;
+}
+.project-overview .max-h-80::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+.space-y-3 > .flex.gap-2:has(> select:first-child) > select {
+  display: none;
+}
+.space-y-3 > .flex.gap-2:has(> select:first-child) {
+  justify-content: center;
+}
+.space-y-3 > .flex.gap-2:has(> select:first-child) > button {
+  min-width: 9rem;
+  gap: .35rem;
+}

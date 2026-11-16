@@ -90,4 +90,9 @@ export const projectApi = {
     await apiClient.delete(`/projects/${id}`);
     return { success: true };
   },
+
+  closeProject: async (id: number | string): Promise<Project> => {
+    const response = await apiClient.patch<ApiResponse<BackendProject>>(`/projects/${id}/close`);
+    return mapProject(unwrapResponse(response.data));
+  },
 };

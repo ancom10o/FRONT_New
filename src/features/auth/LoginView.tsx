@@ -175,7 +175,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoggedIn }) => {
                 )}
               </button>
 
-              {USE_MOCK_API && (
+              {USE_MOCK_API ? (
                 <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3">
                   <p className="text-xs font-bold text-blue-800">Tài khoản demo · mật khẩu demo123</p>
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -184,6 +184,27 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoggedIn }) => {
                         key={account.email}
                         type="button"
                         onClick={() => { setEmail(account.email); setPassword('demo123'); }}
+                        className="rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                      >
+                        {account.role}: {account.email}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3">
+                  <p className="text-xs font-bold text-blue-800">Tài khoản Backend mặc định (DB) · mật khẩu: 123456</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {[
+                      { role: 'ADMIN', email: 'admin@hrm.com' },
+                      { role: 'MANAGER (IT)', email: 'it.manager@hrm.com' },
+                      { role: 'MANAGER (Sales)', email: 'sales.manager@hrm.com' },
+                      { role: 'EMPLOYEE (Dev)', email: 'dev1@hrm.com' },
+                    ].map((account) => (
+                      <button
+                        key={account.email}
+                        type="button"
+                        onClick={() => { setEmail(account.email); setPassword('123456'); }}
                         className="rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
                       >
                         {account.role}: {account.email}

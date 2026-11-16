@@ -96,6 +96,7 @@ export interface Task {
   description?: string;
   priority: TaskPriority;
   status: TaskStatus;
+  statusNote?: string;
   task_type: TaskType;
   taskType: TaskType; // Alias
   is_important: boolean;
@@ -110,7 +111,10 @@ export interface Task {
   assigneeName?: string; // Alias
   follower_ids?: (number | string)[];
   followerIds?: string[]; // Alias
+  followerNames?: string[];
   dependencyIds?: string[];
+  dependencyTitles?: string[];
+  createdByName?: string;
   created_by?: number | string;
   start_date?: string;
   startDate?: string; // Alias

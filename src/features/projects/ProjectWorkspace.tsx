@@ -86,7 +86,20 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project, onB
     setTaskModalOpen(false);
   };
 
-  const isProjectOperator = String(project.leader_id ?? project.pmId) === String(currentUser.id)
+  const deleteTask = async (task: Task) => {
+    if (!window.confirm(`Xóa công việc "${task.title}"?`)) return;
+    try {
+      await taskApi.deleteTask(task.id);
+      setDetailTask(null);
+      await loadTasks();
+      setWorkflowNotice('Đã xóa công việc.');
+    } catch (error) {
+      setTaskError(error instanceof Error ? error.message : 'Không thể xóa công việc.');
+    }
+  };
+
+  const isProjectOperator = currentUser.role === 'ADMIN'
+    || String(project.leader_id ?? project.pmId) === String(currentUser.id)
     || members.some((member) => String(member.userId) === String(currentUser.id) && member.projectRole === 'PROJECT_MANAGER');
   const runtimeProject = workflowDb.projects.find((item) => item.id === Number(project.id));
   const completionRequests = workflowDb.completionRequests.filter((item) => Number(item.projectId) === Number(project.id)).slice().reverse();
@@ -103,7 +116,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project, onB
     { id: 'overview', label: 'Tổng quan dự án', icon: LayoutDashboard },
     { id: 'kanban', label: 'Kanban', icon: Columns3 },
     { id: 'gantt', label: 'Gantt', icon: GanttChart },
-    { id: 'history', label: 'Nhân sự & Lịch sử', icon: History },
+    { id: 'history', label: 'Thêm nhân sự', icon: History },
   ];
 
   return (
@@ -131,7 +144,8 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project, onB
           pendingCompletionStatus={completionRequests[0]?.status} canApproveCompletion={currentUser.role === 'ADMIN'}
           rejectionReason={completionReason} onRejectionReasonChange={setCompletionReason}
           onEdit={() => setProjectModalOpen(true)} onCreateTask={() => { setEditingTask(null); setTaskModalOpen(true); }}
-          onOpenTask={setDetailTask} onNavigate={setActiveTab}
+          onOpenTask={setDetailTask} onNavigate={(tab) => tab === 'history' ? setMembersModalOpen(true) : setActiveTab(tab)}
+          onManageMembers={() => setMembersModalOpen(true)}
           onRequestCompletion={() => void runProjectWorkflow('Đã gửi yêu cầu hoàn thành dự án.', () => mockCoreApi.requestProjectCompletion(Number(project.id)))}
           onApproveCompletion={() => void runProjectWorkflow('Đã phê duyệt hoàn thành dự án.', () => mockCoreApi.decideProjectCompletion(Number(project.id), 'APPROVED', ''))}
           onRejectCompletion={() => void runProjectWorkflow('Đã từ chối yêu cầu.', () => mockCoreApi.decideProjectCompletion(Number(project.id), 'REJECTED', completionReason))}
@@ -140,7 +154,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project, onB
 
       {activeTab === 'kanban' && (
         <ProjectKanban tasks={tasks} members={members} loading={loading || membersLoading} error={taskError || memberError}
-          canCreate={isProjectOperator && ['PLANNING','ACTIVE'].includes(project.status)}
+          canCreate={isProjectOperator && (currentUser.role === 'ADMIN' || ['PLANNING','ACTIVE'].includes(project.status))}
           onCreate={() => { setEditingTask(null); setTaskModalOpen(true); }} onOpen={setDetailTask}/>
       )}
 
@@ -156,8 +170,8 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ project, onB
 
       <TaskFormModal isOpen={taskModalOpen} onClose={() => setTaskModalOpen(false)} onSubmitSuccess={saveTask} initialTask={editingTask} defaultProjectId={String(project.id)} />
       <ProjectFormModal isOpen={projectModalOpen} onClose={() => setProjectModalOpen(false)} initialProject={project} canChangeLeader={currentUser.role === 'ADMIN'} onSubmitSuccess={async (data: ProjectEditData) => { const updated = await projectApi.updateProject(project.id, data); Object.assign(project, updated); setProjectVersion((value) => value + 1); setWorkflowNotice('Đã cập nhật dự án.'); }} />
-      <TaskDetailDrawer task={detailTask} canEdit={isProjectOperator} onClose={() => setDetailTask(null)} onChanged={loadTasks}
-        onEdit={(task) => { setDetailTask(null); setEditingTask(task); setTaskModalOpen(true); }}/>
+      <TaskDetailDrawer task={detailTask} canEdit={isProjectOperator} canOverrideLock={currentUser.role === 'ADMIN'} onClose={() => setDetailTask(null)} onChanged={loadTasks}
+        onEdit={(task) => { setDetailTask(null); setEditingTask(task); setTaskModalOpen(true); }} onDelete={deleteTask}/>
       {membersModalOpen && <ProjectMembersModal project={project} onClose={() => { setMembersModalOpen(false); void loadMembers(); }} />}
     </div>
   );

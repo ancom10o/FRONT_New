@@ -18,7 +18,7 @@ export const projectSchema = z
       .max(100, 'Tên dự án không quá 100 ký tự'),
     description: z
       .string()
-      .max(300, 'Mô tả không được vượt quá 300 ký tự')
+      .max(1000, 'Mô tả không được vượt quá 1000 ký tự')
       .optional()
       .default(''),
     leaderId: z
