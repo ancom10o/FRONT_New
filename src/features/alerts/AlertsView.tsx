@@ -7,6 +7,7 @@ import { PriorityBadge } from '../../components/common/PriorityBadge';
 import { TaskFormModal } from '../tasks/TaskFormModal';
 import { TaskFormData } from '../../schema/task.schema';
 import { useAuthStore } from '../../store/auth.store';
+import { profileChangeRequestApi, ProfileChangeRequest } from '../../services/api/profile-change-request.api';
 
 const dayDifference = (deadline: string) => {
   const due = new Date(`${deadline.slice(0, 10)}T23:59:59`);
@@ -14,13 +15,18 @@ const dayDifference = (deadline: string) => {
 };
 
 export const AlertsView: React.FC = () => {
-  const { canEditTask } = useAuthStore();
+  const { canEditTask, currentUser } = useAuthStore();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filter, setFilter] = useState<'all' | 'overdue' | 'today' | 'soon'>('all');
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [profileRequests, setProfileRequests] = useState<ProfileChangeRequest[]>([]);
+  const [reviewing, setReviewing] = useState<number | null>(null);
 
   const loadTasks = () => taskApi.getTasks().then(setTasks).catch(() => setTasks([]));
   useEffect(() => { loadTasks(); }, []);
+  const loadProfileRequests = () => profileChangeRequestApi.getPending().then(setProfileRequests).catch(() => setProfileRequests([]));
+  useEffect(() => { if (currentUser.role === 'ADMIN') loadProfileRequests(); }, [currentUser.role]);
+  const reviewProfile = async (id: number, approved: boolean) => { try { setReviewing(id); await profileChangeRequestApi.review(id, approved); await loadProfileRequests(); } finally { setReviewing(null); } };
 
   const overdue = tasks.filter((task) => dayDifference(task.deadline) < 0 && task.status !== 'DONE');
   const today = tasks.filter((task) => dayDifference(task.deadline) === 0 && task.status !== 'DONE');
@@ -50,6 +56,7 @@ export const AlertsView: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {currentUser.role === 'ADMIN' && <section className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 p-5"><div><h2 className="text-sm font-bold text-slate-800">Phê duyệt chỉnh sửa thông tin</h2><p className="mt-1 text-xs text-slate-400">Yêu cầu cập nhật hồ sơ từ nhân viên và manager</p></div><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{profileRequests.length} chờ duyệt</span></div><div className="divide-y divide-slate-100">{profileRequests.map((request) => <div key={request.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><div className="text-sm font-semibold text-slate-800">{request.requesterName}</div><p className="mt-1 text-xs text-slate-500">{request.requesterEmail} · gửi lúc {new Date(request.createdAt).toLocaleString('vi-VN')}</p><p className="mt-2 line-clamp-2 text-[11px] text-slate-500">Cập nhật: {Object.keys(request.requestedData).filter((key) => request.requestedData[key] !== null && request.requestedData[key] !== '').join(', ') || 'Thông tin hồ sơ'}</p></div><div className="flex gap-2"><button disabled={reviewing === request.id} onClick={() => void reviewProfile(request.id, false)} className="rounded-xl border border-red-100 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">Từ chối</button><button disabled={reviewing === request.id} onClick={() => void reviewProfile(request.id, true)} className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{reviewing === request.id ? 'Đang xử lý...' : 'Phê duyệt'}</button></div></div>)}{!profileRequests.length && <div className="py-10 text-center text-xs text-slate-400">Không có yêu cầu chỉnh sửa thông tin đang chờ duyệt.</div>}</div></section>}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {[
           ['Quá hạn', overdue.length, 'text-red-600 bg-red-50 border-red-100', AlertTriangle, () => setFilter('overdue')],

@@ -2,6 +2,7 @@ import { apiClient, ApiResponse, unwrapResponse } from './client';
 import { Task, TaskStatus, GlobalFilterParams } from '../../types';
 import { TaskFormData } from '../../schema/task.schema';
 import { ReassignFormData } from '../../schema/reassign.schema';
+import { userApi } from './user.api';
 
 interface BackendTask {
   id: number;
@@ -31,6 +32,15 @@ interface BackendTask {
   progress_percent?: number;
 }
 
+const overdueDaysFromDeadline = (deadline: string | undefined, status: TaskStatus): number => {
+  if (!deadline || status === 'DONE') return 0;
+  const dateOnly = deadline.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return 0;
+  const dueAt = new Date(`${dateOnly}T23:59:59`).getTime();
+  const difference = Date.now() - dueAt;
+  return difference > 0 ? Math.max(1, Math.ceil(difference / 86_400_000)) : 0;
+};
+
 const mapTask = (task: BackendTask): Task => {
   const priority = (task.priority || 'MEDIUM') as Task['priority'];
   const status = ((task.status || 'TODO') === 'COMPLETED' ? 'DONE' : task.status || 'TODO') as TaskStatus;
@@ -39,6 +49,8 @@ const mapTask = (task: BackendTask): Task => {
     rawTaskType && ['PLANNING', 'DEVELOPMENT', 'DESIGN', 'MARKETING', 'TESTING', 'OTHER'].includes(rawTaskType)
       ? rawTaskType as Task['taskType']
       : 'OTHER';
+  const calculatedOverdueDays = overdueDaysFromDeadline(task.deadline, status);
+  const overdueDays = Math.max(task.overdueDays ?? (task.overdue ? 1 : 0), calculatedOverdueDays);
   return {
     id: task.id,
     project_id: task.projectId ?? task.project_id,
@@ -72,8 +84,8 @@ const mapTask = (task: BackendTask): Task => {
     startDate: task.startDate || task.start_date,
     deadline: task.deadline || '',
     dueDate: task.deadline || '',
-    overdueDays: task.overdueDays ?? (task.overdue ? 1 : 0),
-    overdue_days: task.overdueDays ?? (task.overdue ? 1 : 0),
+    overdueDays,
+    overdue_days: overdueDays,
     department_id: task.departmentId,
     departmentId: task.departmentId,
     departmentName: task.departmentName,
@@ -131,8 +143,26 @@ export const taskApi = {
     });
     const term = params?.searchTerm?.toLowerCase();
 
-    return tasks
-      .map(mapTask)
+    let mappedTasks = tasks.map(mapTask);
+    // Deployed API versions may not include department fields in TaskResponse.
+    // Enrich tasks from the user directory so the table always shows the
+    // assignee's current department during a backend rollout.
+    if (mappedTasks.some((task) => task.assigneeId && !task.departmentName)) {
+      try {
+        const users = await userApi.getUsers();
+        const usersById = new Map(users.map((user) => [String(user.id), user]));
+        mappedTasks = mappedTasks.map((task) => {
+          const assignee = usersById.get(String(task.assigneeId));
+          return assignee?.departmentName
+            ? { ...task, departmentId: assignee.departmentId, department_id: assignee.department_id, departmentName: assignee.departmentName, department_name: assignee.department_name }
+            : task;
+        });
+      } catch {
+        // The task list remains available if the directory request is forbidden.
+      }
+    }
+
+    return mappedTasks
       .filter((task) => !term || `${task.title} ${task.assigneeName || ''} ${task.projectName || ''}`.toLowerCase().includes(term))
       .filter((task) => !params?.assigneeId || params.assigneeId === 'ALL' || String(task.assigneeId) === params.assigneeId)
       .filter((task) => !params?.priority || params.priority === 'ALL' || task.priority === params.priority)

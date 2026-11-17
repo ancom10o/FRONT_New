@@ -80,6 +80,10 @@ export const TaskList: React.FC = () => {
     return currentUser.role === 'ADMIN' || currentUser.role === 'MANAGER';
   };
   const getProgress = (task: Task) => task.progressPercent ?? task.progress_percent ?? 0;
+  const formatDate = (value?: string) => {
+    const date = String(value || '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) ? `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}` : 'Chưa cập nhật';
+  };
   const isEmployee = currentUser.role === 'EMPLOYEE';
   const hasAnyAction = true;
   const projects = [...new Map(tasks.map((task) => [String(task.projectId), { id: String(task.projectId), name: task.projectName || 'Dự án' }])).values()];
@@ -157,7 +161,7 @@ export const TaskList: React.FC = () => {
                 <th className="pb-3 font-semibold">Công việc</th>
                 <th className="pb-3 font-semibold">Dự án</th>
                 <th className="pb-3 font-semibold">Phụ trách (Assignee)</th>
-                <th className="pb-3 font-semibold">Bộ phận</th>
+                <th className="pb-3 font-semibold">Phòng ban</th>
                 <th className="pb-3 font-semibold">Trạng thái</th>
                 <th className="pb-3 font-semibold min-w-32">Tiến độ</th>
                 <th className="pb-3 font-semibold">Ưu tiên</th>
@@ -176,7 +180,7 @@ export const TaskList: React.FC = () => {
                   <td className="py-3 pr-3 font-semibold text-slate-700">{t.assigneeName}</td>
                   <td className="py-3 pr-3 text-slate-500">{t.departmentName}</td>
                   <td className="py-3 pr-3">
-                    <StatusBadge status={t.status} />
+                    <div className="flex flex-wrap gap-1"><StatusBadge status={t.status} />{(t.overdueDays || 0) > 0 && <span className="rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-600">Quá hạn</span>}</div>
                   </td>
                   <td className="py-3 pr-3">
                     <button type="button" onClick={() => setDetailTask(t)} className="min-w-28 text-left group" aria-label={`Mở workflow ${t.title}`}><div className="mb-1 flex items-center justify-between text-[10px]"><span className="text-slate-400 group-hover:text-blue-600">Checklist</span><span className="font-bold text-slate-700">{getProgress(t)}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400" style={{ width: `${getProgress(t)}%` }} /></div></button>
@@ -184,7 +188,7 @@ export const TaskList: React.FC = () => {
                   <td className="py-3 pr-3">
                     <PriorityBadge priority={t.priority} />
                   </td>
-                  <td className="py-3 text-slate-500 whitespace-nowrap">{t.deadline || t.dueDate}</td>
+                  <td className="py-3 text-slate-500 whitespace-nowrap">{formatDate(t.deadline || t.dueDate)}</td>
                   {hasAnyAction && (
                     <td className="py-3 text-center">
                       <div className="flex items-center justify-center gap-1 opacity-80 group-hover:opacity-100">

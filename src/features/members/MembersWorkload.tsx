@@ -9,6 +9,7 @@ import { Department, User } from '../../types';
 import { useAuthStore } from '../../store/auth.store';
 import { useFilterStore } from '../../store/filter.store';
 import { PermissionManagement } from '../permissions/PermissionManagement';
+import { ProfileApprovalBoard } from './ProfileApprovalBoard';
 
 type LocalStaffProfile = {
   dateOfBirth: string;
@@ -39,6 +40,19 @@ const formatProfileValue = (value: unknown): string => {
 const formatJsonKey = (key: string) => key
   .replace(/([a-z])([A-Z])/g, '$1 $2')
   .replace(/^./, (character) => character.toUpperCase());
+
+const normalizeSearch = (value: string) => value.toLocaleLowerCase('vi').replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
+const profileMatch = (profileText: string, query: string): string => {
+  try {
+    const term = normalizeSearch(query);
+    const visit = (value: unknown): string => {
+      if (Array.isArray(value)) { for (const item of value) { const result = visit(item); if (result) return result; } return ''; }
+      if (value && typeof value === 'object') { const values = Object.values(value as Record<string, unknown>).filter((item) => item !== null && typeof item !== 'object').map(String); if (term && normalizeSearch(values.join(' ')).includes(term)) return values.join(' · '); for (const item of Object.values(value as Record<string, unknown>)) { const result = visit(item); if (result) return result; } }
+      return '';
+    };
+    return visit(JSON.parse(profileText));
+  } catch { return ''; }
+};
 
 const getStoredProfiles = (): Record<string, LocalStaffProfile> => {
   try { return JSON.parse(localStorage.getItem('staffProfiles') || '{}'); } catch { return {}; }
@@ -77,10 +91,12 @@ const emptyForm = {
 export const MembersWorkload: React.FC = () => {
   const { canManageStaff, isAdmin, adminArea, setAdminArea, setActiveTab } = useAuthStore();
   const setFilter = useFilterStore((state) => state.setFilter);
-  const [activeSection, setActiveSection] = useState<'staff' | 'create' | 'permissions'>('staff');
+  const [activeSection, setActiveSection] = useState<'staff' | 'create' | 'permissions' | 'approvals'>('staff');
   const [users, setUsers] = useState<User[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [search, setSearch] = useState('');
+  const [profileSearchText, setProfileSearchText] = useState<Record<string, string>>({});
+  const [searchFocused, setSearchFocused] = useState(false);
   const [departmentFilter, setDepartmentFilter] = useState('ALL');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [workStatusFilter, setWorkStatusFilter] = useState('ACTIVE');
@@ -104,6 +120,8 @@ export const MembersWorkload: React.FC = () => {
     const [userData, departmentData] = await Promise.all([userApi.getUsers(), departmentApi.getDepartments()]);
     setUsers(userData);
     setDepartments(departmentData);
+    const profileEntries = await Promise.all(userData.map(async (user) => { try { const response = await employeeProfileApi.getByUserId(user.id); const profile = response.profile || {}; return [String(user.id), JSON.stringify({ skills: profile.skills || [], educations: profile.educations || [], certifications: profile.certifications || [], languages: profile.languages || [], notes: profile.notes || {} })] as const; } catch { return [String(user.id), ''] as const; } }));
+    setProfileSearchText(Object.fromEntries(profileEntries));
   };
 
   useEffect(() => { loadData().catch(() => undefined); }, []);
@@ -230,12 +248,15 @@ export const MembersWorkload: React.FC = () => {
   };
 
   const visibleUsers = useMemo(() => users.filter((user) => workStatusFilter === 'ALL' || user.status === workStatusFilter).filter((user) => {
-    const matchesSearch = `${user.full_name || user.name} ${user.email}`.toLowerCase().includes(search.toLowerCase());
+    const term = normalizeSearch(search);
+    const matchesSearch = !term || normalizeSearch(`${user.full_name || user.name} ${user.email} ${user.departmentName || user.department_name || ''} ${user.specialization || ''} ${(user.skills || []).join(' ')}`).includes(term) || !!profileMatch(profileSearchText[String(user.id)] || '', search);
     const matchesDepartment = departmentFilter === 'ALL' || String(user.departmentId || user.department_id) === departmentFilter;
     const matchesRole = roleFilter === 'ALL' || (user.system_role || user.role) === roleFilter;
     const matchesWorkStatus = workStatusFilter === 'ALL' || user.status === workStatusFilter;
     return matchesSearch && matchesDepartment && matchesRole && matchesWorkStatus;
-  }), [users, search, departmentFilter, roleFilter, workStatusFilter]);
+  }), [users, search, departmentFilter, roleFilter, workStatusFilter, profileSearchText]);
+
+  const searchSuggestions = useMemo(() => search.trim() ? visibleUsers.slice(0, 6).map((user) => ({ user, matchedProfile: profileMatch(profileSearchText[String(user.id)] || '', search) })) : [], [search, visibleUsers, profileSearchText]);
 
   const sectionTabs = (
     <div role="tablist" aria-label="Quản lý nhân sự" className="flex w-fit gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -273,6 +294,7 @@ export const MembersWorkload: React.FC = () => {
           Phân quyền
         </button>
       )}
+      {isAdmin() && <button type="button" role="tab" aria-selected={activeSection === 'approvals'} onClick={() => setActiveSection('approvals')} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${activeSection === 'approvals' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}><FileText className="h-4 w-4" aria-hidden="true" />Phê duyệt</button>}
     </div>
   );
 
@@ -284,6 +306,8 @@ export const MembersWorkload: React.FC = () => {
       </div>
     );
   }
+
+  if (activeSection === 'approvals' && isAdmin()) return <div className="space-y-4">{sectionTabs}<ProfileApprovalBoard /></div>;
 
   return (
     <div className="space-y-4">
@@ -299,7 +323,8 @@ export const MembersWorkload: React.FC = () => {
           <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <label className="relative sm:col-span-2 xl:col-span-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm kiếm theo tên, phòng ban..." className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-none focus:border-blue-400" />
+              <input value={search} onFocus={() => setSearchFocused(true)} onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên hoặc thông tin hồ sơ..." className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-none focus:border-blue-400" />
+              {searchFocused && searchSuggestions.length > 0 && <div className="absolute left-0 right-0 top-11 z-20 max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl">{searchSuggestions.map(({ user, matchedProfile }) => <button key={user.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setSelectedUser(user); setDetailTab('profile'); setSearchFocused(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-blue-50"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-700">{(user.full_name || user.name || '?').charAt(0)}</span><span className="min-w-0"><b className="block truncate text-xs text-slate-700">ID {user.id} · {user.full_name || user.name}</b><span className="block truncate text-[10px] text-slate-400">{matchedProfile ? `🔎 ${matchedProfile}` : `${user.departmentName || user.department_name || 'Chưa có phòng ban'} · ${user.email}`}</span></span></button>)}</div>}
             </label>
             <select aria-label="Lọc phòng ban" value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
               <option value="ALL">Tất cả phòng ban</option>
